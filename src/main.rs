@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 const BLOCK_SIZE: usize = 32; // Size of each block in bits
 const HASH_SIZE: usize = 32; // Size of the hash code in bits
 
@@ -11,7 +9,8 @@ struct XorHasher {
 impl XorHasher {
     fn new() -> Self {
         XorHasher {
-            state: [0; HASH_SIZE],
+            // Internal state of SHA-256
+            state: [0x6a, 0x09, 0xe6, 0x67, 0xbb, 0x67, 0xae, 0x85, 0x3c, 0x6e, 0xf3, 0x72, 0xa5, 0x4f, 0xf5, 0x3a, 0x51, 0x0e, 0x52, 0x7f, 0x9b, 0x05, 0x68, 0x8c, 0x1f, 0x83, 0xd9, 0xab, 0x5b, 0xe0, 0xcd, 0x19],
             block_count: 0,
         }
     }
@@ -25,6 +24,11 @@ impl XorHasher {
             let block_size = remaining.min(BLOCK_SIZE);
 
             block[..block_size].copy_from_slice(&data[offset..offset + block_size]);
+
+            // encode the length of the block in the last byte
+            if block_size < BLOCK_SIZE {
+                block[BLOCK_SIZE - 1] = block_size as u8;
+            }
             self.process_block(&block);
 
             offset += block_size;
@@ -38,8 +42,11 @@ impl XorHasher {
 
     fn process_block(&mut self, block: &[u8; BLOCK_SIZE]) {
         for i in 0..HASH_SIZE {
-            // since we have HASH_SIZE == BLOCK_SIZE this is easy
-            self.state[i] ^= block[i];
+            for _ in 0..80 {
+                self.state[i] ^= block[i];
+                self.state[i] = self.state[i].rotate_left(1);
+            }
+            self.state[i] = self.state[i].overflowing_add(block[i]).0;
         }
     }
 }
@@ -61,7 +68,7 @@ fn xor_hash_attack(data: &[u8]) -> Vec<u8> {
     }
     let mut mathcing_message = Vec::new();
 
-    for _ in 1..=3 {
+    for _ in 0..=u8::MAX {
         mathcing_message.extend_from_slice(&padded_data);
     }
     mathcing_message
@@ -94,5 +101,10 @@ mod tests {
 }
 
 fn main() {
-    println!("Hello, world!");
+    let data = String::from("Hello, World!").into_bytes();
+    let hash = xor_hash(&data);
+    // print hash as hex string
+    for byte in hash.iter() {
+        print!("{:02x}", byte);
+    }
 }
